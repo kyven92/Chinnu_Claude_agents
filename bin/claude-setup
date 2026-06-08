@@ -35,9 +35,10 @@ MANAGED_FILES = [
     *[
         (Path("agents") / agent, Path("agents") / agent)
         for agent in [
-            "planner.md", "architect.md", "implementer.md", "implementer-large.md",
-            "code-reviewer.md", "security-auditor.md", "debugger.md",
-            "build-error-resolver.md", "e2e-runner.md",
+            "chinnu-planner.md", "chinnu-architect.md", "chinnu-implementer.md",
+            "chinnu-implementer-large.md", "chinnu-code-reviewer.md",
+            "chinnu-security-auditor.md", "chinnu-debugger.md",
+            "chinnu-build-error-resolver.md", "chinnu-e2e-runner.md",
         ]
     ],
     *[

@@ -7,7 +7,7 @@
       "update": "npx skills add mattpocock/skills",
       "uninstall_cmd": "npx skills remove mattpocock/skills --yes",
       "verify": "test -d ~/.claude/skills/caveman",
-      "opt_in": false,
+      "opt_in": true,
       "tier": 2,
       "needs_runtime": ["node", "npx"],
       "post_install_note": "Includes: caveman, grill-me, to-prd, to-issues, tdd, diagnose, handoff, zoom-out"
@@ -30,7 +30,7 @@
         "/plugin uninstall context-mode"
       ],
       "verify": null,
-      "opt_in": false,
+      "opt_in": true,
       "tier": 2
     },
     {
@@ -52,7 +52,7 @@
       "update": "npx hail-hydra-cc --global",
       "uninstall_cmd": "echo y | npx hail-hydra-cc --uninstall",
       "verify": "test -f ~/.claude/hooks/hydra-auto-guard.js",
-      "opt_in": false,
+      "opt_in": true,
       "tier": 2,
       "needs_runtime": ["node", "npx"]
     },
@@ -94,7 +94,7 @@
         "/plugin uninstall skill-creator"
       ],
       "verify": null,
-      "opt_in": false,
+      "opt_in": true,
       "tier": 3
     },
     {
@@ -104,7 +104,7 @@
       "update": "cd ~/.claude/skills/gstack && git pull && ./setup",
       "uninstall_cmd": "rm -rf ~/.claude/skills/gstack",
       "verify": "test -d ~/.claude/skills/gstack",
-      "opt_in": false,
+      "opt_in": true,
       "tier": 3,
       "needs_runtime": ["git", "bun"],
       "post_install_note": "Requires Bun v1.0+"
@@ -186,18 +186,6 @@
       "post_install_note": "Used by architect agent — auto-detects decision moments in conversation"
     },
     {
-      "id": "threat-modeling",
-      "kind": "npx",
-      "install": "npx skills add DollhouseMCP/skills --skill threat-modeling",
-      "update": "npx skills add DollhouseMCP/skills --skill threat-modeling",
-      "uninstall_cmd": "npx skills remove threat-modeling --yes",
-      "verify": "test -f ~/.claude/skills/threat-modeling/SKILL.md",
-      "opt_in": false,
-      "tier": 4,
-      "needs_runtime": ["node", "npx"],
-      "post_install_note": "Used by architect agent — runs STRIDE analysis on security-sensitive architectural decisions"
-    },
-    {
       "id": "context7-mcp",
       "kind": "mcp-add",
       "install": "claude mcp add context7 -- npx -y @upstash/context7-mcp@latest",
@@ -256,7 +244,7 @@
       "update": null,
       "uninstall_cmd": null,
       "verify": "npx -y ecc-agentshield --version >/dev/null 2>&1",
-      "opt_in": false,
+      "opt_in": true,
       "tier": 0,
       "needs_runtime": ["node", "npx"],
       "post_install_note": "Run with: npx ecc-agentshield scan"
