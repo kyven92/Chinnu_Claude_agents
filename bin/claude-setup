@@ -46,6 +46,7 @@ MANAGED_FILES = [
         for h in [
             "pre-bash-guard.sh", "secret-leak-scan.sh",
             "reinsert-identity.sh", "post-write-diff-review.sh",
+            "hydra-auto-guard.js",
         ]
     ],
     (Path("templates") / "CLAUDE.md.template", Path("CLAUDE.md")),

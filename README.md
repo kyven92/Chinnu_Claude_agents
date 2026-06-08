@@ -25,6 +25,27 @@ cd ClaudeSetup
 
 All your existing `~/.claude/` files are backed up before anything is changed. Conflicts are resolved interactively.
 
+## Typical workflow
+
+```
+You:    /new-feature "add Stripe subscription billing"
+        → chinnu-architect runs (DB schema + auth scope detected)
+        → chinnu-planner writes PRD + issues file
+
+You:    Use the chinnu-implementer agent to implement issue 1 from the issues file.
+        → chinnu-implementer writes code with TDD (red → green → refactor)
+
+You:    /parallel-review
+        → chinnu-code-reviewer + test-runner + chinnu-build-error-resolver run simultaneously
+
+You:    Use the chinnu-security-auditor agent on the billing module before we ship.
+
+You:    Use the chinnu-e2e-runner agent to add E2E tests for the subscription flow.
+
+You:    /ship-feature
+        → chinnu-code-reviewer does final deep review → PR opened
+```
+
 ## Quick links
 
 | | |

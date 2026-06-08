@@ -27,6 +27,16 @@
             "_origin": "claude-setup"
           }
         ]
+      },
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ~/.claude/hooks/hydra-auto-guard.js",
+            "_origin": "claude-setup"
+          }
+        ]
       }
     ],
     "PostCompact": [
