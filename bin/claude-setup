@@ -520,7 +520,7 @@ def cmd_uninstall(args):
 
     print("── Files ─────────────────────────────────────────────")
     for record in records:
-        if record["action"] not in ("wrote", "merged"):
+        if record["action"] not in ("wrote", "merged", "skipped"):
             continue
 
         dst = target / record["dst_path"]
@@ -538,15 +538,25 @@ def cmd_uninstall(args):
             reverted += 1
             continue
 
-        if user_modified:
-            action = prompt_lib.prompt_conflict(
-                record["dst_path"],
-                ["keep", "revert", "delete"],
-                "keep",
-                yes,
-            )
+        if record["action"] == "skipped":
+            # File was identical at install time — revert would restore same content,
+            # so only offer delete or keep.
+            if user_modified:
+                action = prompt_lib.prompt_conflict(
+                    record["dst_path"], ["keep", "delete"], "keep", yes
+                )
+            else:
+                action = "delete"
         else:
-            action = "revert"
+            if user_modified:
+                action = prompt_lib.prompt_conflict(
+                    record["dst_path"],
+                    ["keep", "revert", "delete"],
+                    "keep",
+                    yes,
+                )
+            else:
+                action = "revert"
 
         arc_name = record["dst_path"]
         has_original = tar is not None and _tar_has(tar, arc_name)
