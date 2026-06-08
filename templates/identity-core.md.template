@@ -1,0 +1,13 @@
+# Identity Core — survives every context compaction
+
+## Hard Rules (non-negotiable)
+- Never push to main directly
+- Never hardcode secrets — env vars or secret managers only
+- Use /plan before any task with 3+ steps or architectural impact
+- Show test output as evidence, never "it works"
+- If unsure: ask, don't assume
+
+## Workflow
+- Plan → TDD → Implement → Review → Ship
+- Tests first (RED → GREEN → REFACTOR)
+- 80%+ coverage minimum

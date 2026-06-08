@@ -1,0 +1,265 @@
+{
+  "sources": [
+    {
+      "id": "mattpocock-skills",
+      "kind": "npx",
+      "install": "npx skills add mattpocock/skills",
+      "update": "npx skills add mattpocock/skills",
+      "uninstall_cmd": "npx skills remove mattpocock/skills --yes",
+      "verify": "test -d ~/.claude/skills/caveman",
+      "opt_in": false,
+      "tier": 2,
+      "needs_runtime": ["node", "npx"],
+      "post_install_note": "Includes: caveman, grill-me, to-prd, to-issues, tdd, diagnose, handoff, zoom-out"
+    },
+    {
+      "id": "claude-context-mode",
+      "kind": "plugin-marketplace",
+      "install": null,
+      "update": null,
+      "uninstall_cmd": null,
+      "install_manual": true,
+      "install_steps": [
+        "/plugin marketplace add mksglu/claude-context-mode",
+        "/plugin install context-mode@claude-context-mode"
+      ],
+      "update_steps": [
+        "/plugin update context-mode"
+      ],
+      "uninstall_steps": [
+        "/plugin uninstall context-mode"
+      ],
+      "verify": null,
+      "opt_in": false,
+      "tier": 2
+    },
+    {
+      "id": "graperoot",
+      "kind": "pip",
+      "install": "pip install --user graperoot",
+      "update": "pip install --user --upgrade graperoot",
+      "uninstall_cmd": "pip uninstall -y graperoot",
+      "verify": "command -v dgc",
+      "opt_in": true,
+      "tier": 2,
+      "needs_runtime": ["python3", "pip"],
+      "warning": "Replaces the 'claude' command with 'dgc'. Use 'dgc .' instead of 'claude' after install."
+    },
+    {
+      "id": "hail-hydra",
+      "kind": "npx",
+      "install": "npx hail-hydra-cc --global",
+      "update": "npx hail-hydra-cc --global",
+      "uninstall_cmd": "echo y | npx hail-hydra-cc --uninstall",
+      "verify": "test -f ~/.claude/hooks/hydra-auto-guard.js",
+      "opt_in": false,
+      "tier": 2,
+      "needs_runtime": ["node", "npx"]
+    },
+    {
+      "id": "ecc-e2e-testing",
+      "kind": "npx",
+      "install": "npx skills add https://github.com/affaan-m/everything-claude-code --skill e2e-testing",
+      "update": "npx skills add https://github.com/affaan-m/everything-claude-code --skill e2e-testing",
+      "uninstall_cmd": "npx skills remove e2e-testing --yes",
+      "verify": "test -f ~/.claude/skills/e2e-testing/SKILL.md",
+      "opt_in": false,
+      "tier": 3,
+      "needs_runtime": ["node", "npx"],
+      "post_install_note": "Used by e2e-runner agent — POM structure, CI/CD, flaky test strategies, artifact management"
+    },
+    {
+      "id": "playwright-best-practices",
+      "kind": "npx",
+      "install": "npx skills add https://github.com/currents-dev/playwright-best-practices-skill --skill playwright-best-practices",
+      "update": "npx skills add https://github.com/currents-dev/playwright-best-practices-skill --skill playwright-best-practices",
+      "uninstall_cmd": "npx skills remove playwright-best-practices --yes",
+      "verify": "test -f ~/.claude/skills/playwright-best-practices/SKILL.md",
+      "opt_in": false,
+      "tier": 3,
+      "needs_runtime": ["node", "npx"],
+      "post_install_note": "Used by e2e-runner agent — locators, sync, auth, accessibility, security, mobile, payments"
+    },
+    {
+      "id": "anthropic-skill-creator",
+      "kind": "plugin-marketplace",
+      "install": null,
+      "update": null,
+      "uninstall_cmd": null,
+      "install_manual": true,
+      "install_steps": [
+        "/plugin install skill-creator@anthropic-agent-skills"
+      ],
+      "uninstall_steps": [
+        "/plugin uninstall skill-creator"
+      ],
+      "verify": null,
+      "opt_in": false,
+      "tier": 3
+    },
+    {
+      "id": "gstack",
+      "kind": "git-clone",
+      "install": "git clone https://github.com/garrytan/gstack.git ~/.claude/skills/gstack && (cd ~/.claude/skills/gstack && ./setup)",
+      "update": "cd ~/.claude/skills/gstack && git pull && ./setup",
+      "uninstall_cmd": "rm -rf ~/.claude/skills/gstack",
+      "verify": "test -d ~/.claude/skills/gstack",
+      "opt_in": false,
+      "tier": 3,
+      "needs_runtime": ["git", "bun"],
+      "post_install_note": "Requires Bun v1.0+"
+    },
+    {
+      "id": "superpowers",
+      "kind": "plugin-marketplace",
+      "install": null,
+      "update": null,
+      "uninstall_cmd": null,
+      "install_manual": true,
+      "install_steps": [
+        "/plugin marketplace add obra-superpowers",
+        "/plugin install superpowers@superpowers-marketplace"
+      ],
+      "update_steps": [
+        "/plugin update superpowers"
+      ],
+      "uninstall_steps": [
+        "/plugin uninstall superpowers"
+      ],
+      "verify": null,
+      "opt_in": false,
+      "tier": 3,
+      "post_install_note": "Used by implementer-large agent — do NOT add to global skills"
+    },
+    {
+      "id": "trailofbits-skills",
+      "kind": "plugin-marketplace",
+      "install": null,
+      "update": null,
+      "uninstall_cmd": null,
+      "install_manual": true,
+      "install_steps": [
+        "/plugin marketplace add trailofbits/skills",
+        "/plugin menu  # install: static-analysis, insecure-defaults, differential-review, variant-analysis"
+      ],
+      "update_steps": [
+        "/plugin menu  # re-install or update each Trail of Bits skill"
+      ],
+      "uninstall_steps": [
+        "/plugin uninstall static-analysis",
+        "/plugin uninstall insecure-defaults",
+        "/plugin uninstall differential-review",
+        "/plugin uninstall variant-analysis"
+      ],
+      "verify": null,
+      "opt_in": false,
+      "tier": 3
+    },
+    {
+      "id": "adr-kit",
+      "kind": "plugin-marketplace",
+      "install": null,
+      "update": null,
+      "uninstall_cmd": null,
+      "install_manual": true,
+      "install_steps": [
+        "/plugin install adr-kit@rvdbreemen"
+      ],
+      "uninstall_steps": [
+        "/plugin uninstall adr-kit"
+      ],
+      "verify": null,
+      "opt_in": false,
+      "tier": 4,
+      "post_install_note": "Used by architect agent — structures ADR output with anti-rationalization guards and pre-commit enforcement"
+    },
+    {
+      "id": "ecc-architecture-decision-records",
+      "kind": "npx",
+      "install": "npx skills add affaan-m/ECC --skill architecture-decision-records",
+      "update": "npx skills add affaan-m/ECC --skill architecture-decision-records",
+      "uninstall_cmd": "npx skills remove architecture-decision-records --yes",
+      "verify": "test -f ~/.claude/skills/architecture-decision-records/SKILL.md",
+      "opt_in": false,
+      "tier": 4,
+      "needs_runtime": ["node", "npx"],
+      "post_install_note": "Used by architect agent — auto-detects decision moments in conversation"
+    },
+    {
+      "id": "threat-modeling",
+      "kind": "npx",
+      "install": "npx skills add DollhouseMCP/skills --skill threat-modeling",
+      "update": "npx skills add DollhouseMCP/skills --skill threat-modeling",
+      "uninstall_cmd": "npx skills remove threat-modeling --yes",
+      "verify": "test -f ~/.claude/skills/threat-modeling/SKILL.md",
+      "opt_in": false,
+      "tier": 4,
+      "needs_runtime": ["node", "npx"],
+      "post_install_note": "Used by architect agent — runs STRIDE analysis on security-sensitive architectural decisions"
+    },
+    {
+      "id": "context7-mcp",
+      "kind": "mcp-add",
+      "install": "claude mcp add context7 -- npx -y @upstash/context7-mcp@latest",
+      "update": "claude mcp remove context7 && claude mcp add context7 -- npx -y @upstash/context7-mcp@latest",
+      "uninstall_cmd": "claude mcp remove context7 --global",
+      "verify": "claude mcp list | grep context7",
+      "opt_in": false,
+      "tier": 3,
+      "needs_runtime": ["claude", "npx"]
+    },
+    {
+      "id": "repomix-mcp",
+      "kind": "plugin-marketplace",
+      "install": null,
+      "update": null,
+      "uninstall_cmd": null,
+      "install_manual": true,
+      "install_steps": [
+        "/plugin install repomix-mcp@repomix"
+      ],
+      "uninstall_steps": [
+        "/plugin uninstall repomix-mcp"
+      ],
+      "verify": null,
+      "opt_in": true,
+      "tier": 5,
+      "post_install_note": "Only needed for large codebases or /refresh-docs"
+    },
+    {
+      "id": "claude-context-mcp",
+      "kind": "mcp-add",
+      "install": "claude mcp add claude-context -e OPENAI_API_KEY=$OPENAI_API_KEY -e MILVUS_TOKEN=$MILVUS_TOKEN -- npx @zilliz/claude-context-mcp@latest",
+      "update": "claude mcp remove claude-context && claude mcp add claude-context -e OPENAI_API_KEY=$OPENAI_API_KEY -e MILVUS_TOKEN=$MILVUS_TOKEN -- npx @zilliz/claude-context-mcp@latest",
+      "uninstall_cmd": "claude mcp remove claude-context --global",
+      "verify": "claude mcp list | grep claude-context",
+      "opt_in": true,
+      "tier": 5,
+      "needs_runtime": ["claude", "npx"],
+      "warning": "Requires OPENAI_API_KEY and MILVUS_TOKEN env vars. Only needed for 100k+ line codebases."
+    },
+    {
+      "id": "claude-mem",
+      "kind": "npx",
+      "install": "npx claude-mem install",
+      "update": "npx claude-mem install",
+      "uninstall_cmd": "npx claude-mem uninstall",
+      "verify": "test -f ~/.claude/skills/claude-mem/SKILL.md",
+      "opt_in": true,
+      "tier": 5,
+      "needs_runtime": ["node", "npx"]
+    },
+    {
+      "id": "ecc-agentshield",
+      "kind": "npx",
+      "install": null,
+      "update": null,
+      "uninstall_cmd": null,
+      "verify": "npx -y ecc-agentshield --version >/dev/null 2>&1",
+      "opt_in": false,
+      "tier": 0,
+      "needs_runtime": ["node", "npx"],
+      "post_install_note": "Run with: npx ecc-agentshield scan"
+    }
+  ]
+}

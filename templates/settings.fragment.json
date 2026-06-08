@@ -1,0 +1,44 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/pre-bash-guard.sh",
+            "_origin": "claude-setup"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/secret-leak-scan.sh",
+            "_origin": "claude-setup"
+          },
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/post-write-diff-review.sh",
+            "_origin": "claude-setup"
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/reinsert-identity.sh",
+            "_origin": "claude-setup"
+          }
+        ]
+      }
+    ]
+  }
+}

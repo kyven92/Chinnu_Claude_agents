@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Internal AI session planning docs (not needed by end users)
+CreatingClaudeSetup/
+
+# Upstream-installed skills (installed by npx skills add — not kit source)
+.agents/
+
+# Local Claude Code project config (machine-specific paths, session memory)
+.claude/
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# github
+.github
+
+# Temp / OS
+Thumbs.db

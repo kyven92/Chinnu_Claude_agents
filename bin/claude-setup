@@ -1,0 +1,933 @@
+#!/usr/bin/env python3
+"""claude-setup — one-command installer for the Chinnu-Claude-setup kit."""
+import argparse
+import json
+import os
+import platform
+import shutil
+import subprocess
+import sys
+import tarfile as tarfile_mod
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT))
+
+from lib import manifest as manifest_lib
+from lib import conflict as conflict_lib
+from lib import merge as merge_lib
+from lib import backup as backup_lib
+from lib import prompt as prompt_lib
+from lib import runner as runner_lib
+
+SOURCES_FILE = REPO_ROOT / "sources.json"
+FRAGMENT_FILE = REPO_ROOT / "templates" / "settings.fragment.json"
+BACKUP_ROOT = Path.home() / ".claude-setup-backups"
+
+MANAGED_FILES = [
+    *[
+        (Path("skills") / skill / "SKILL.md", Path("skills") / skill / "SKILL.md")
+        for skill in [
+            "session-start", "session-end", "security-review", "ship-feature",
+            "parallel-review", "refresh-docs", "new-feature", "project-bootstrap",
+        ]
+    ],
+    *[
+        (Path("agents") / agent, Path("agents") / agent)
+        for agent in [
+            "planner.md", "architect.md", "implementer.md", "implementer-large.md",
+            "code-reviewer.md", "security-auditor.md", "debugger.md",
+            "build-error-resolver.md", "e2e-runner.md",
+        ]
+    ],
+    *[
+        (Path("hooks") / h, Path("hooks") / h)
+        for h in [
+            "pre-bash-guard.sh", "secret-leak-scan.sh",
+            "reinsert-identity.sh", "post-write-diff-review.sh",
+        ]
+    ],
+    (Path("templates") / "CLAUDE.md.template", Path("CLAUDE.md")),
+    (Path("templates") / "identity-core.md.template", Path("identity-core.md")),
+]
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────
+
+def _resolve_target(args) -> Path:
+    if getattr(args, "target", None):
+        return Path(args.target).expanduser().resolve()
+    return Path.home() / ".claude"
+
+
+def _filter_managed_files(files: list, args) -> list:
+    any_filter = any([
+        getattr(args, "skills_only", False),
+        getattr(args, "agents_only", False),
+        getattr(args, "hooks_only", False),
+    ])
+    if not any_filter:
+        return files
+    result = []
+    for src_rel, dst_rel in files:
+        first = src_rel.parts[0]
+        if getattr(args, "skills_only", False) and first == "skills":
+            result.append((src_rel, dst_rel))
+        elif getattr(args, "agents_only", False) and first == "agents":
+            result.append((src_rel, dst_rel))
+        elif getattr(args, "hooks_only", False) and first == "hooks":
+            result.append((src_rel, dst_rel))
+    return result
+
+
+def _find_latest_manifest() -> "Path | None":
+    if not BACKUP_ROOT.exists():
+        return None
+    manifests = sorted(BACKUP_ROOT.glob("*-manifest.json"), key=lambda p: p.stat().st_mtime)
+    return manifests[-1] if manifests else None
+
+
+def _load_install_manifest(path: Path) -> list:
+    return json.loads(path.read_text())
+
+
+def _confirm(message: str, yes: bool) -> bool:
+    if yes:
+        return True
+    raw = input(f"{message} [y/N] ").strip().lower()
+    return raw in ("y", "yes")
+
+
+def _opt_in_ids(args) -> set:
+    ids = set()
+    if getattr(args, "with_graperoot", False):
+        ids.add("graperoot")
+    return ids
+
+
+def _graperoot_warning(yes: bool) -> bool:
+    """Print GrapeRoot warning and return True if user confirms install."""
+    print()
+    print("=" * 60)
+    print("  WARNING: GRAPEROOT INSTALL")
+    print("=" * 60)
+    print()
+    print("  GrapeRoot replaces the 'claude' command with 'dgc'.")
+    print("  After install, running 'claude' directly causes")
+    print("  'MCP Server Connection Failed'.")
+    print()
+    print("  You must use 'dgc .' instead of 'claude' for every session.")
+    print()
+    print("=" * 60)
+    if yes:
+        print("  --yes set: skipping confirmation.")
+        return True
+    raw = input("  Continue? [y/N] ").strip().lower()
+    print()
+    return raw in ("y", "yes")
+
+
+# ── install ───────────────────────────────────────────────────────────────
+
+def cmd_install(args):
+    target = _resolve_target(args)
+
+    # Validate manifest before doing anything
+    sources = manifest_lib.load(str(SOURCES_FILE))
+    errors = manifest_lib.validate(sources)
+    if errors:
+        for e in errors:
+            print(f"MANIFEST ERROR: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    managed = _filter_managed_files(MANAGED_FILES, args)
+
+    if args.dry_run:
+        _dry_run(args, target, managed, sources)
+        return
+
+    _real_install(args, target, managed, sources)
+
+
+def _dry_run(args, target: Path, managed: list, sources: list):
+    print(f"Dry-run install → {target}\n")
+    counts = {"write": 0, "skip": 0, "conflict": 0}
+
+    print("── Managed files ─────────────────────────────────────")
+    for src_rel, dst_rel in managed:
+        src = REPO_ROOT / src_rel
+        dst = target / dst_rel
+        if not src.exists():
+            print(f"  MISSING SRC: {src_rel}")
+            continue
+        state = conflict_lib.compare_files(src, dst)
+        if state == "identical":
+            print(f"  WOULD SKIP    : {dst_rel}  (identical)")
+            counts["skip"] += 1
+        elif state == "missing":
+            print(f"  WOULD WRITE   : {dst_rel}  (new file)")
+            counts["write"] += 1
+        else:
+            print(f"  WOULD CONFLICT: {dst_rel}  (differs — would prompt)")
+            counts["conflict"] += 1
+
+    print("\n── settings.json merge ───────────────────────────────")
+    settings_path = target / "settings.json"
+    try:
+        existing = merge_lib.load_settings(settings_path)
+    except ValueError as exc:
+        print(f"  ERROR: {exc}")
+        sys.exit(1)
+    fragment = json.loads(FRAGMENT_FILE.read_text())
+    merged = merge_lib.merge_additive(existing, fragment)
+    new_hooks = sum(
+        len(g.get("hooks", []))
+        for groups in fragment.get("hooks", {}).values()
+        for g in groups
+    )
+    print(f"  WOULD MERGE   : settings.json  (+{new_hooks} hook entries)")
+
+    print("\n── External sources ──────────────────────────────────")
+    opt_ins = _opt_in_ids(args)
+    for src in sources:
+        sid = src["id"]
+        if src.get("opt_in") and sid not in opt_ins:
+            print(f"  SKIPPED (opt-in): {sid}  (pass --with-{sid} to include)")
+            continue
+        if src.get("install_manual"):
+            steps = src.get("install_steps", [])
+            print(f"  WOULD INSTRUCT : {sid}  ({len(steps)} manual step(s))")
+        elif src.get("install") is None:
+            print(f"  RUN ON DEMAND  : {sid}  (no install step)")
+        else:
+            print(f"  WOULD RUN      : {sid}  →  {src['install']}")
+
+    print("\n── Summary ───────────────────────────────────────────")
+    print(f"  Files to write   : {counts['write']}")
+    print(f"  Files to skip    : {counts['skip']}")
+    print(f"  Files to prompt  : {counts['conflict']}")
+    opt_ins_set = _opt_in_ids(args)
+    manual = sum(
+        1 for s in sources
+        if s.get("install_manual") and not (s.get("opt_in") and s["id"] not in opt_ins_set)
+    )
+    print(f"  Manual follow-ups: {manual}")
+    print("\nDry-run complete — nothing was written.")
+
+
+def _real_install(args, target: Path, managed: list, sources: list):
+    print(f"Installing to {target} ...\n")
+    yes = getattr(args, "yes", False)
+
+    # 1. Backup existing managed files
+    existing_targets = [dst for _, dst in managed if (target / dst).exists()]
+    tarball = backup_lib.create_backup(target, [Path(p) for p in existing_targets])
+    print(f"Backup created: {tarball}\n")
+
+    # 2. Write managed files
+    records = []
+    print("── Managed files ─────────────────────────────────────")
+    for src_rel, dst_rel in managed:
+        src = REPO_ROOT / src_rel
+        dst = target / dst_rel
+
+        if not src.exists():
+            print(f"  MISSING SRC  : {src_rel}")
+            continue
+
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        state = conflict_lib.compare_files(src, dst)
+
+        if state == "identical":
+            records.append({
+                "src_repo_path": str(src_rel), "dst_path": str(dst_rel),
+                "sha256": conflict_lib.sha256_of(src), "action": "skipped",
+            })
+            print(f"  SKIP         : {dst_rel}")
+
+        elif state == "missing":
+            shutil.copy2(src, dst)
+            records.append({
+                "src_repo_path": str(src_rel), "dst_path": str(dst_rel),
+                "sha256": conflict_lib.sha256_of(dst), "action": "wrote",
+            })
+            print(f"  WRITE        : {dst_rel}")
+
+        else:
+            action = prompt_lib.prompt_conflict(
+                str(dst_rel), ["overwrite", "skip", "diff", "abort"], "skip", yes
+            )
+            if action == "abort":
+                print("Aborted by user.")
+                sys.exit(1)
+            if action == "diff":
+                print(conflict_lib.unified_diff(src, dst))
+                action = prompt_lib.prompt_conflict(
+                    str(dst_rel), ["overwrite", "skip", "abort"], "skip", yes
+                )
+                if action == "abort":
+                    print("Aborted by user.")
+                    sys.exit(1)
+            if action == "overwrite":
+                shutil.copy2(src, dst)
+                records.append({
+                    "src_repo_path": str(src_rel), "dst_path": str(dst_rel),
+                    "sha256": conflict_lib.sha256_of(dst), "action": "wrote",
+                })
+                print(f"  OVERWRITE    : {dst_rel}")
+            else:
+                records.append({
+                    "src_repo_path": str(src_rel), "dst_path": str(dst_rel),
+                    "sha256": conflict_lib.sha256_of(src), "action": "skipped",
+                })
+                print(f"  SKIP         : {dst_rel}")
+
+    # Make hooks executable
+    hooks_dir = target / "hooks"
+    if hooks_dir.exists():
+        for sh in hooks_dir.glob("*.sh"):
+            sh.chmod(sh.stat().st_mode | 0o111)
+
+    # 3. Merge settings.json
+    print("\n── settings.json ─────────────────────────────────────")
+    settings_path = target / "settings.json"
+    try:
+        existing = merge_lib.load_settings(settings_path)
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        sys.exit(1)
+    fragment = json.loads(FRAGMENT_FILE.read_text())
+    merged = merge_lib.merge_additive(existing, fragment)
+    if not merge_lib.validate_merged(merged):
+        print("ERROR: merged settings failed schema validation.", file=sys.stderr)
+        sys.exit(1)
+    settings_path.write_text(json.dumps(merged, indent=2) + "\n")
+    records.append({
+        "src_repo_path": "templates/settings.fragment.json",
+        "dst_path": "settings.json",
+        "sha256": conflict_lib.sha256_of(settings_path),
+        "action": "merged",
+    })
+    print(f"  MERGED       : settings.json")
+
+    # 4. Run scriptable sources + record them in the manifest
+    opt_ins = _opt_in_ids(args)
+    print("\n── External sources ──────────────────────────────────")
+    for src in sources:
+        if src.get("opt_in") and src["id"] not in opt_ins:
+            continue
+        if src.get("install_manual"):
+            # Record manual sources so uninstall knows to print their steps
+            records.append({
+                "action": "source-manual",
+                "source_id": src["id"],
+                "uninstall_steps": src.get("uninstall_steps", []),
+            })
+            continue
+        if src.get("install") is None:
+            continue
+        # Skip re-install if already verified as present
+        if src.get("verify"):
+            already = runner_lib.verify_source(src)
+            if already["status"] == "ok":
+                print(f"  SKIP (already installed): {src['id']}")
+                records.append({
+                    "action": "source-installed",
+                    "source_id": src["id"],
+                    "install_status": "already-installed",
+                    "uninstall_cmd": src.get("uninstall_cmd"),
+                    "uninstall_steps": src.get("uninstall_steps", []),
+                    "needs_runtime": src.get("needs_runtime", []),
+                })
+                continue
+
+        if src.get("warning"):
+            print(f"  WARNING: {src['warning']}")
+        # GrapeRoot requires extra confirmation even with --with-graperoot
+        if src["id"] == "graperoot" and not _graperoot_warning(yes):
+            print(f"  SKIP (declined): graperoot")
+            records.append({
+                "action": "source-skipped",
+                "source_id": src["id"],
+                "install_status": "declined",
+                "uninstall_cmd": src.get("uninstall_cmd"),
+                "uninstall_steps": src.get("uninstall_steps", []),
+                "needs_runtime": src.get("needs_runtime", []),
+            })
+            continue
+        result = runner_lib.run_source(src)
+        status = result["status"]
+        reason = result.get("reason", "")
+        print(f"  {src['id']}: {status}" + (f" ({reason})" if reason else ""))
+        if src["id"] == "graperoot" and status == "ok":
+            print("    GrapeRoot installed. Use `dgc .` to start Claude Code from now on.")
+        if note := src.get("post_install_note"):
+            print(f"    → {note}")
+        # Record every source attempt — uninstall uses this, not live verify
+        records.append({
+            "action": "source-installed" if status == "ok" else "source-skipped",
+            "source_id": src["id"],
+            "install_status": status,
+            "uninstall_cmd": src.get("uninstall_cmd"),
+            "uninstall_steps": src.get("uninstall_steps", []),
+            "needs_runtime": src.get("needs_runtime", []),
+        })
+
+    # 5. Write install manifest (after sources so they're included)
+    backup_lib.write_install_manifest(tarball, records)
+
+    # 6. Manual follow-up steps
+    manual_sources = [
+        s for s in sources
+        if s.get("install_manual") and not (s.get("opt_in") and s["id"] not in opt_ins)
+    ]
+    if manual_sources:
+        print("\n── Manual follow-up steps (run inside Claude Code) ──")
+        for src in manual_sources:
+            print(f"\n  {src['id']}:")
+            for step in src.get("install_steps", []):
+                print(f"    {step}")
+            if note := src.get("post_install_note"):
+                print(f"    → {note}")
+
+    wrote = sum(1 for r in records if r["action"] == "wrote")
+    skipped = sum(1 for r in records if r["action"] == "skipped")
+    print(f"\nDone. Wrote {wrote} file(s), skipped {skipped}. Backup: {tarball}")
+
+
+# ── doctor ────────────────────────────────────────────────────────────────
+
+def cmd_doctor(args):
+    target = _resolve_target(args)
+    failures = []
+
+    def check(label: str, ok: bool, detail: str = ""):
+        symbol = "✓" if ok else "✗"
+        line = f"  {symbol} {label}"
+        if detail:
+            line += f"  ({detail})"
+        print(line)
+        if not ok:
+            failures.append(label)
+
+    print(f"Doctor — checking {target}\n")
+
+    # 1. Target dir exists
+    check("~/.claude/ exists and is readable", target.exists() and os.access(target, os.R_OK))
+
+    # 2. Per-file sha256 vs install manifest
+    manifest_path = _find_latest_manifest()
+    if not manifest_path:
+        print("  ! No install manifest found — skipping file integrity checks")
+    else:
+        print(f"  Using manifest: {manifest_path.name}")
+        records = _load_install_manifest(manifest_path)
+        for record in records:
+            if record["action"] not in ("wrote", "merged"):
+                continue
+            dst = target / record["dst_path"]
+            if not dst.exists():
+                check(f"file present: {record['dst_path']}", False, "missing")
+            else:
+                current = conflict_lib.sha256_of(dst)
+                check(
+                    f"file unmodified: {record['dst_path']}",
+                    current == record["sha256"],
+                    "" if current == record["sha256"] else "user-modified",
+                )
+
+    # 3. settings.json valid JSON
+    settings_path = target / "settings.json"
+    try:
+        merge_lib.load_settings(settings_path)
+        check("settings.json is valid JSON", True)
+    except ValueError as exc:
+        check("settings.json is valid JSON", False, str(exc))
+
+    # 4. Hook scripts executable
+    hooks_dir = target / "hooks"
+    if hooks_dir.exists():
+        for sh in hooks_dir.glob("*.sh"):
+            check(f"hook executable: {sh.name}", os.access(sh, os.X_OK))
+    else:
+        print("  ! hooks/ directory not found — skipping executable checks")
+
+    # 5. Verify sources
+    print("\n── Source verification ───────────────────────────────")
+    sources = manifest_lib.load(str(SOURCES_FILE))
+    for src in sources:
+        result = runner_lib.verify_source(src)
+        status = result["status"]
+        ok = status == "ok"
+        unverifiable = status == "unverifiable"
+        symbol = "✓" if ok else ("?" if unverifiable else "✗")
+        print(f"  {symbol} {src['id']}: {status}")
+        if not ok and not unverifiable:
+            failures.append(f"source verify: {src['id']}")
+
+    # 6. GrapeRoot — distinguish managed vs unmanaged install
+    if shutil.which("dgc"):
+        gr_manifest = _find_latest_manifest()
+        gr_managed = False
+        if gr_manifest:
+            gr_records = _load_install_manifest(gr_manifest)
+            gr_managed = any(
+                r.get("source_id") == "graperoot" and r["action"] == "source-installed"
+                for r in gr_records
+            )
+        if gr_managed:
+            print("\n  graperoot (dgc) is installed and managed by this kit")
+        else:
+            print("\n  ! graperoot (dgc) is installed but not managed by this kit")
+            print("    Are you using `dgc` or `claude`?")
+
+    print()
+    if failures:
+        print(f"FAIL — {len(failures)} check(s) failed.")
+        sys.exit(1)
+    else:
+        print("PASS — all checks passed.")
+
+
+# ── uninstall ─────────────────────────────────────────────────────────────
+
+def cmd_uninstall(args):
+    target = _resolve_target(args)
+    yes = getattr(args, "yes", False)
+
+    manifest_path = _find_latest_manifest()
+    if not manifest_path:
+        print("No install manifest found. Nothing to uninstall.")
+        sys.exit(0)
+
+    tarball = Path(str(manifest_path).replace("-manifest.json", ".tar.gz"))
+    records = _load_install_manifest(manifest_path)
+
+    print(f"Uninstall using manifest: {manifest_path.name}")
+    print(f"Target: {target}\n")
+
+    if not _confirm("Proceed with uninstall?", yes):
+        print("Aborted.")
+        sys.exit(0)
+
+    removed, kept, reverted, skipped = 0, 0, 0, 0
+
+    # Open tarball for restoring original files
+    tar = tarfile_mod.open(tarball, "r:gz") if tarball.exists() else None
+
+    print("── Files ─────────────────────────────────────────────")
+    for record in records:
+        if record["action"] not in ("wrote", "merged"):
+            continue
+
+        dst = target / record["dst_path"]
+        if not dst.exists():
+            print(f"  ALREADY GONE : {record['dst_path']}")
+            skipped += 1
+            continue
+
+        current_sha = conflict_lib.sha256_of(dst)
+        user_modified = current_sha != record["sha256"]
+
+        if record["action"] == "merged":
+            # settings.json: strip _origin entries
+            _strip_settings(dst, yes)
+            reverted += 1
+            continue
+
+        if user_modified:
+            action = prompt_lib.prompt_conflict(
+                record["dst_path"],
+                ["keep", "revert", "delete"],
+                "keep",
+                yes,
+            )
+        else:
+            action = "revert"
+
+        arc_name = record["dst_path"]
+        has_original = tar is not None and _tar_has(tar, arc_name)
+
+        if action == "keep":
+            print(f"  KEEP         : {record['dst_path']}  (user-modified)")
+            kept += 1
+        elif action == "delete" or (action == "revert" and not has_original):
+            dst.unlink(missing_ok=True)
+            _remove_empty_parents(dst, target)
+            print(f"  DELETE       : {record['dst_path']}")
+            removed += 1
+        else:
+            # revert: restore from tarball
+            member = tar.getmember(arc_name)
+            tar.extract(member, path=target, set_attrs=False)
+            print(f"  RESTORE      : {record['dst_path']}")
+            reverted += 1
+
+    if tar:
+        tar.close()
+
+    # Strip _origin from settings.json if present
+    settings_path = target / "settings.json"
+    if settings_path.exists() and not any(
+        r["dst_path"] == "settings.json" and r["action"] == "merged" for r in records
+    ):
+        _strip_settings(settings_path, yes)
+
+    # ── External sources ──────────────────────────────────────────────────
+    # Use manifest records — these capture exactly what was installed, including
+    # global installs that are independent of --target.
+    source_records = [r for r in records if r["action"] in ("source-installed", "source-skipped", "source-manual")]
+    manual_uninstall = []
+
+    if source_records:
+        print("\n── External sources (from install manifest) ──────────")
+        for record in source_records:
+            sid = record["source_id"]
+            uninstall_cmd = record.get("uninstall_cmd")
+            uninstall_steps = record.get("uninstall_steps", [])
+            needs_runtime = record.get("needs_runtime", [])
+
+            if record["action"] == "source-skipped":
+                print(f"  SKIP (was not installed): {sid}")
+                continue
+
+            if record["action"] == "source-manual":
+                if uninstall_steps:
+                    manual_uninstall.append((sid, uninstall_steps))
+                continue
+
+            # source-installed: always attempt removal regardless of --target
+            if uninstall_cmd:
+                missing = runner_lib.detect_missing_runtimes(needs_runtime)
+                if missing:
+                    print(f"  SKIP (missing runtime {', '.join(missing)}): {sid}")
+                    continue
+                if _confirm(f"  Remove {sid}?", yes):
+                    result = runner_lib.run_source({"id": sid, "install": uninstall_cmd,
+                                                    "needs_runtime": needs_runtime})
+                    print(f"  {sid}: {result['status']}")
+                else:
+                    print(f"  KEPT (skipped): {sid}")
+            elif uninstall_steps:
+                manual_uninstall.append((sid, uninstall_steps))
+            else:
+                print(f"  MANUAL REQUIRED: {sid}  (no uninstall_cmd — check sources.json)")
+    else:
+        # Fallback for manifests created before source tracking was added
+        print("\n── External sources (legacy manifest — using live verify) ─")
+        sources = manifest_lib.load(str(SOURCES_FILE))
+        for src in sources:
+            sid = src["id"]
+            verify_result = runner_lib.verify_source(src)
+            if verify_result["status"] not in ("ok", "unverifiable"):
+                print(f"  SKIP (not installed): {sid}")
+                continue
+            uninstall_cmd = src.get("uninstall_cmd")
+            uninstall_steps = src.get("uninstall_steps", [])
+            if uninstall_cmd:
+                missing = runner_lib.detect_missing_runtimes(src.get("needs_runtime", []))
+                if missing:
+                    print(f"  SKIP (missing runtime {', '.join(missing)}): {sid}")
+                    continue
+                if _confirm(f"  Remove {sid}?", yes):
+                    result = runner_lib.run_source({"id": sid, "install": uninstall_cmd,
+                                                    "needs_runtime": src.get("needs_runtime", [])})
+                    print(f"  {sid}: {result['status']}")
+                else:
+                    print(f"  KEPT (skipped): {sid}")
+            elif uninstall_steps:
+                manual_uninstall.append((sid, uninstall_steps))
+
+    if manual_uninstall:
+        print("\n── Manual uninstall steps (run inside Claude Code) ──")
+        for sid, steps in manual_uninstall:
+            print(f"\n  {sid}:")
+            for step in steps:
+                print(f"    {step}")
+
+    print(f"\nDone. Removed: {removed}, Restored: {reverted}, Kept: {kept}, Skipped: {skipped}.")
+
+
+def _tar_has(tar: tarfile_mod.TarFile, name: str) -> bool:
+    try:
+        tar.getmember(name)
+        return True
+    except KeyError:
+        return False
+
+
+def _strip_settings(settings_path: Path, yes: bool):
+    try:
+        data = merge_lib.load_settings(settings_path)
+    except ValueError:
+        return
+    if not data:
+        return
+
+    def _strip_hooks(hooks_dict: dict) -> dict:
+        result = {}
+        for hook_type, groups in hooks_dict.items():
+            new_groups = []
+            for group in groups:
+                new_hooks = [h for h in group.get("hooks", []) if h.get("_origin") != "claude-setup"]
+                if new_hooks:
+                    new_groups.append({**group, "hooks": new_hooks})
+                elif "hooks" not in group:
+                    new_groups.append(group)
+            if new_groups:
+                result[hook_type] = new_groups
+        return result
+
+    original_hooks = data.get("hooks", {})
+    stripped_hooks = _strip_hooks(original_hooks)
+    if stripped_hooks:
+        data["hooks"] = stripped_hooks
+    elif "hooks" in data:
+        del data["hooks"]
+
+    settings_path.write_text(json.dumps(data, indent=2) + "\n")
+    print(f"  STRIPPED     : settings.json  (removed _origin=claude-setup entries)")
+
+
+def _remove_empty_parents(path: Path, stop_at: Path):
+    parent = path.parent
+    while parent != stop_at and parent.exists():
+        try:
+            parent.rmdir()
+            parent = parent.parent
+        except OSError:
+            break
+
+
+# ── status ────────────────────────────────────────────────────────────────
+
+def cmd_status(args):
+    target = _resolve_target(args)
+
+    manifest_path = _find_latest_manifest()
+    if not manifest_path:
+        print("No install manifest found. Run 'claude-setup install' first.")
+        sys.exit(0)
+
+    records = _load_install_manifest(manifest_path)
+    ts = manifest_path.name.replace("-manifest.json", "")
+    print(f"Last install : {ts}")
+    print(f"Target       : {target}\n")
+
+    print("── Managed files ─────────────────────────────────────")
+    for record in records:
+        if record["action"] == "skipped":
+            continue
+        dst = target / record["dst_path"]
+        if not dst.exists():
+            state = "MISSING  "
+        elif conflict_lib.sha256_of(dst) == record["sha256"]:
+            state = "OK       "
+        else:
+            state = "MODIFIED "
+        print(f"  {state}: {record['dst_path']}")
+
+    print("\n── External sources ──────────────────────────────────")
+    sources = manifest_lib.load(str(SOURCES_FILE))
+    for src in sources:
+        result = runner_lib.verify_source(src)
+        status = result["status"]
+        symbol = "✓" if status == "ok" else ("?" if status == "unverifiable" else "✗")
+        print(f"  {symbol} {src['id']}: {status}")
+
+
+# ── update ────────────────────────────────────────────────────────────────
+
+def cmd_update(args):
+    target = _resolve_target(args)
+    force_ours = getattr(args, "force_ours", False)
+    opt_ins = _opt_in_ids(args)
+    os_name = platform.system().lower()
+
+    print(f"Updating Chinnu-Claude-setup → {target}\n")
+
+    # Pass 1: Self-update via git pull
+    print("── Self-update ───────────────────────────────────────")
+    git_dir = REPO_ROOT / ".git"
+    if git_dir.exists():
+        result = subprocess.run(
+            ["git", "-C", str(REPO_ROOT), "pull", "--ff-only"],
+            capture_output=True, text=True,
+        )
+        if result.returncode == 0:
+            msg = result.stdout.strip() or "already up to date"
+            print(f"  ✓ {msg}")
+        else:
+            print(f"  ✗ git pull failed: {result.stderr.strip()}")
+    else:
+        print("  ! Not a git checkout — skipping (manual install)")
+
+    # Pass 2: Vendored file refresh
+    print("\n── Vendored file refresh ─────────────────────────────")
+    manifest_path = _find_latest_manifest()
+    manifest_shas = {}
+    if manifest_path:
+        manifest_shas = {
+            r["dst_path"]: r.get("sha256", "")
+            for r in _load_install_manifest(manifest_path)
+            if "sha256" in r
+        }
+
+    updated_files = 0
+    for src_rel, dst_rel in MANAGED_FILES:
+        src = REPO_ROOT / src_rel
+        dst = target / dst_rel
+        if not src.exists():
+            print(f"  MISSING SRC  : {src_rel}")
+            continue
+        state = conflict_lib.compare_files(src, dst)
+        if state == "identical":
+            print(f"  UNCHANGED    : {dst_rel}")
+            continue
+        if state == "missing":
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst)
+            print(f"  WRITE        : {dst_rel}  (new)")
+            updated_files += 1
+            continue
+        # File differs — check whether user modified it
+        installed_sha = manifest_shas.get(str(dst_rel), "")
+        current_sha = conflict_lib.sha256_of(dst)
+        user_modified = bool(installed_sha) and current_sha != installed_sha
+        if user_modified and not force_ours:
+            print(f"  SKIP         : {dst_rel}  (user-modified — use --force-ours to overwrite)")
+        else:
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst)
+            print(f"  UPDATED      : {dst_rel}")
+            updated_files += 1
+
+    # Make hooks executable
+    hooks_dir = target / "hooks"
+    if hooks_dir.exists():
+        for sh in hooks_dir.glob("*.sh"):
+            sh.chmod(sh.stat().st_mode | 0o111)
+
+    # Refresh settings.json
+    settings_path = target / "settings.json"
+    try:
+        existing = merge_lib.load_settings(settings_path)
+    except ValueError:
+        existing = {}
+    fragment = json.loads(FRAGMENT_FILE.read_text())
+    merged = merge_lib.merge_additive(existing, fragment)
+    if merge_lib.validate_merged(merged):
+        settings_path.write_text(json.dumps(merged, indent=2) + "\n")
+        print(f"  MERGED       : settings.json")
+
+    # Pass 3: Upstream source refresh
+    print("\n── Upstream source refresh ───────────────────────────")
+    sources = manifest_lib.load(str(SOURCES_FILE))
+    missing_runtime_warnings = []
+
+    for src in sources:
+        sid = src["id"]
+        if src.get("opt_in") and sid not in opt_ins:
+            print(f"  SKIP (opt-in): {sid}")
+            continue
+        if src.get("install_manual"):
+            print(f"  MANUAL       : {sid}")
+            continue
+        update_cmd = src.get("update")
+        if not update_cmd:
+            print(f"  SKIP (no update cmd): {sid}")
+            continue
+        needed = src.get("needs_runtime", [])
+        missing = runner_lib.detect_missing_runtimes(needed)
+        if missing:
+            hints = [runner_lib.install_hint(r, os_name) for r in missing]
+            missing_runtime_warnings.append((sid, missing, hints))
+            print(f"  SKIP (missing runtime {', '.join(missing)}): {sid}")
+            continue
+        update_source = {**src, "install": update_cmd}
+        rc, log = runner_lib.run_install(update_source)
+        if rc == 0:
+            print(f"  ✓ UPDATED    : {sid}")
+        else:
+            print(f"  ✗ FAILED     : {sid}  (exit {rc})")
+            for line in log.splitlines()[:5]:
+                print(f"    {line}")
+
+    # Print runtime install hints if any were missing
+    if missing_runtime_warnings:
+        print("\n── Missing runtimes ──────────────────────────────────")
+        for sid, missing, hints in missing_runtime_warnings:
+            print(f"  {sid} requires: {', '.join(missing)}")
+            for hint in hints:
+                print(f"    Install: {hint}")
+
+    # Task 4.3: Re-print manual follow-up checklist
+    manual_sources = [
+        s for s in sources
+        if s.get("install_manual") and not (s.get("opt_in") and s["id"] not in opt_ins)
+    ]
+    if manual_sources:
+        print("\n── Manual follow-up steps (verify still installed) ──")
+        print("  Run these inside Claude Code to verify plugins are still wired up:\n")
+        for i, src in enumerate(manual_sources, 1):
+            steps = src.get("update_steps") or src.get("install_steps", [])
+            for step in steps:
+                print(f"  {i}. {step}")
+
+    print(f"\nUpdate complete. Files refreshed: {updated_files}.")
+
+
+# ── CLI wiring ────────────────────────────────────────────────────────────
+
+def _add_common_flags(parser):
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--yes", action="store_true")
+    parser.add_argument("--target", metavar="PATH")
+    parser.add_argument("--with-graperoot", action="store_true")
+    parser.add_argument("--skills-only", action="store_true")
+    parser.add_argument("--agents-only", action="store_true")
+    parser.add_argument("--hooks-only", action="store_true")
+    parser.add_argument("--verbose", action="store_true")
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        prog="claude-setup",
+        description="Install the Chinnu-Claude-setup kit into ~/.claude/",
+    )
+    subparsers = parser.add_subparsers(dest="command")
+
+    p_install = subparsers.add_parser("install", help="Install the kit")
+    _add_common_flags(p_install)
+    p_install.set_defaults(func=cmd_install)
+
+    p_doctor = subparsers.add_parser("doctor", help="Check install health")
+    p_doctor.add_argument("--target", metavar="PATH")
+    p_doctor.set_defaults(func=cmd_doctor)
+
+    p_uninstall = subparsers.add_parser("uninstall", help="Remove managed files and restore backups")
+    p_uninstall.add_argument("--yes", action="store_true")
+    p_uninstall.add_argument("--target", metavar="PATH")
+    p_uninstall.set_defaults(func=cmd_uninstall)
+
+    p_status = subparsers.add_parser("status", help="Show install status")
+    p_status.add_argument("--target", metavar="PATH")
+    p_status.set_defaults(func=cmd_status)
+
+    p_update = subparsers.add_parser("update", help="Update managed files and upstream sources")
+    p_update.add_argument("--target", metavar="PATH")
+    p_update.add_argument("--with-graperoot", action="store_true")
+    p_update.add_argument("--force-ours", action="store_true",
+                          help="Overwrite user-modified managed files with upstream versions")
+    p_update.set_defaults(func=cmd_update)
+
+    args = parser.parse_args()
+    if not args.command:
+        parser.print_help()
+        sys.exit(0)
+
+    args.func(args)
+
+
+if __name__ == "__main__":
+    main()

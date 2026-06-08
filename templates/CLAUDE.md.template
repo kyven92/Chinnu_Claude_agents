@@ -1,0 +1,21 @@
+# Project Rules — loads every session, keep under 200 lines
+
+## Hard Rules
+- /plan before any task with 3+ steps or architectural decisions
+- Never push to main directly
+- Never hardcode secrets — env vars only
+- Show test output as evidence, not "it works"
+- Make every change minimal — don't refactor unless asked
+- If ambiguous: ask, don't assume
+- If task touches 3+ files or requires arch decisions → /new-feature first
+
+## Stack (non-obvious decisions only)
+- [your stack here — 3-5 lines max]
+
+## Code Standards
+- [lint rules, type requirements, test framework]
+- [what NOT to do — most important section]
+
+## Compact Instructions
+Preserve: decisions, files modified, open questions
+Discard: verbose tool outputs, failed exploration attempts
