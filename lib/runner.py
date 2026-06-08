@@ -8,6 +8,7 @@ RUNTIME_BINS = {
     "npx": "npx",
     "python3": "python3",
     "pip": "pip",
+    "pipx": "pipx",
     "bun": "bun",
     "git": "git",
     "gh": "gh",
@@ -42,6 +43,10 @@ _INSTALL_HINTS = {
     "pip": {
         "linux": "sudo apt-get install python3-pip",
         "darwin": "python3 -m ensurepip --upgrade",
+    },
+    "pipx": {
+        "linux": "sudo apt-get install pipx  # or: pip install --user pipx",
+        "darwin": "brew install pipx",
     },
     "claude": {
         "linux": "npm install -g @anthropic-ai/claude-code",

@@ -35,14 +35,14 @@
     },
     {
       "id": "graperoot",
-      "kind": "pip",
-      "install": "pip install --user graperoot",
-      "update": "pip install --user --upgrade graperoot",
-      "uninstall_cmd": "pip uninstall -y graperoot",
+      "kind": "pipx",
+      "install": "pipx install graperoot",
+      "update": "pipx upgrade graperoot",
+      "uninstall_cmd": "pipx uninstall graperoot",
       "verify": "command -v dgc",
       "opt_in": true,
       "tier": 2,
-      "needs_runtime": ["python3", "pip"],
+      "needs_runtime": ["pipx"],
       "warning": "Replaces the 'claude' command with 'dgc'. Use 'dgc .' instead of 'claude' after install."
     },
     {
