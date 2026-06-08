@@ -357,6 +357,7 @@ def _real_install(args, target: Path, managed: list, sources: list):
                 "needs_runtime": src.get("needs_runtime", []),
             })
             continue
+        print(f"  Installing {src['id']} ...")
         result = runner_lib.run_source(src)
         status = result["status"]
         reason = result.get("reason", "")
@@ -846,6 +847,7 @@ def cmd_update(args):
             missing_runtime_warnings.append((sid, missing, hints))
             print(f"  SKIP (missing runtime {', '.join(missing)}): {sid}")
             continue
+        print(f"  Updating {sid} ...")
         update_source = {**src, "install": update_cmd}
         rc, log = runner_lib.run_install(update_source)
         if rc == 0:

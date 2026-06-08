@@ -58,14 +58,14 @@
     },
     {
       "id": "ecc-e2e-testing",
-      "kind": "git-clone",
-      "install": "tmpdir=$(mktemp -d) && git clone --depth 1 https://github.com/affaan-m/everything-claude-code \"$tmpdir\" && mkdir -p ~/.claude/skills/e2e-testing && cp -r \"$tmpdir\"/skills/e2e-testing/. ~/.claude/skills/e2e-testing/ && rm -rf \"$tmpdir\"",
-      "update": "tmpdir=$(mktemp -d) && git clone --depth 1 https://github.com/affaan-m/everything-claude-code \"$tmpdir\" && mkdir -p ~/.claude/skills/e2e-testing && cp -r \"$tmpdir\"/skills/e2e-testing/. ~/.claude/skills/e2e-testing/ && rm -rf \"$tmpdir\"",
-      "uninstall_cmd": "rm -rf ~/.claude/skills/e2e-testing",
-      "verify": "test -f ~/.claude/skills/e2e-testing/SKILL.md",
+      "kind": "plugin-marketplace",
+      "install": "claude plugin marketplace add affaan-m/ecc; claude plugin install e2e-testing@ecc",
+      "update": "claude plugin update e2e-testing",
+      "uninstall_cmd": "claude plugin uninstall e2e-testing",
+      "verify": "claude plugin list 2>/dev/null | grep -q e2e-testing",
       "opt_in": false,
       "tier": 3,
-      "needs_runtime": ["git"],
+      "needs_runtime": ["claude"],
       "post_install_note": "Used by e2e-runner agent — POM structure, CI/CD, flaky test strategies, artifact management"
     },
     {
@@ -112,7 +112,7 @@
     {
       "id": "superpowers",
       "kind": "plugin-marketplace",
-      "install": "claude plugin marketplace add obra-superpowers && claude plugin install superpowers@superpowers-marketplace",
+      "install": "claude plugin marketplace add obra/superpowers && claude plugin install superpowers@superpowers-marketplace",
       "update": "claude plugin update superpowers",
       "uninstall_cmd": "claude plugin uninstall superpowers",
       "verify": "claude plugin list 2>/dev/null | grep -q superpowers",
@@ -124,7 +124,7 @@
     {
       "id": "trailofbits-skills",
       "kind": "plugin-marketplace",
-      "install": "claude plugin marketplace add trailofbits/skills && claude plugin install static-analysis && claude plugin install insecure-defaults && claude plugin install differential-review && claude plugin install variant-analysis",
+      "install": "claude plugin marketplace add trailofbits/skills && claude plugin install static-analysis@trailofbits && claude plugin install insecure-defaults@trailofbits && claude plugin install differential-review@trailofbits && claude plugin install variant-analysis@trailofbits",
       "update": "claude plugin update static-analysis && claude plugin update insecure-defaults && claude plugin update differential-review && claude plugin update variant-analysis",
       "uninstall_cmd": "claude plugin uninstall static-analysis && claude plugin uninstall insecure-defaults && claude plugin uninstall differential-review && claude plugin uninstall variant-analysis",
       "verify": "claude plugin list 2>/dev/null | grep -q static-analysis",
@@ -135,7 +135,7 @@
     {
       "id": "adr-kit",
       "kind": "plugin-marketplace",
-      "install": "claude plugin install adr-kit@rvdbreemen",
+      "install": "claude plugin marketplace add rvdbreemen/adr-kit && claude plugin install adr-kit@rvdbreemen",
       "update": "claude plugin update adr-kit",
       "uninstall_cmd": "claude plugin uninstall adr-kit",
       "verify": "claude plugin list 2>/dev/null | grep -q adr-kit",
@@ -146,14 +146,14 @@
     },
     {
       "id": "ecc-architecture-decision-records",
-      "kind": "git-clone",
-      "install": "tmpdir=$(mktemp -d) && git clone --depth 1 https://github.com/affaan-m/ECC \"$tmpdir\" && mkdir -p ~/.claude/skills/architecture-decision-records && cp -r \"$tmpdir\"/skills/architecture-decision-records/. ~/.claude/skills/architecture-decision-records/ && rm -rf \"$tmpdir\"",
-      "update": "tmpdir=$(mktemp -d) && git clone --depth 1 https://github.com/affaan-m/ECC \"$tmpdir\" && mkdir -p ~/.claude/skills/architecture-decision-records && cp -r \"$tmpdir\"/skills/architecture-decision-records/. ~/.claude/skills/architecture-decision-records/ && rm -rf \"$tmpdir\"",
-      "uninstall_cmd": "rm -rf ~/.claude/skills/architecture-decision-records",
-      "verify": "test -f ~/.claude/skills/architecture-decision-records/SKILL.md",
+      "kind": "plugin-marketplace",
+      "install": "claude plugin marketplace add affaan-m/ecc; claude plugin install architecture-decision-records@ecc",
+      "update": "claude plugin update architecture-decision-records",
+      "uninstall_cmd": "claude plugin uninstall architecture-decision-records",
+      "verify": "claude plugin list 2>/dev/null | grep -q architecture-decision-records",
       "opt_in": false,
       "tier": 4,
-      "needs_runtime": ["git"],
+      "needs_runtime": ["claude"],
       "post_install_note": "Used by architect agent — auto-detects decision moments in conversation"
     },
     {
