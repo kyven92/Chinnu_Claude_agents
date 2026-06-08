@@ -1,7 +1,7 @@
 """Load and validate sources.json manifest."""
 import json
 
-VALID_KINDS = {"npx", "pip", "git-clone", "plugin-marketplace", "mcp-add", "npm-global"}
+VALID_KINDS = {"npx", "pip", "pipx", "git-clone", "plugin-marketplace", "mcp-add", "npm-global"}
 REQUIRED_FIELDS = {"id", "kind", "install", "update", "verify", "opt_in", "tier"}
 
 
