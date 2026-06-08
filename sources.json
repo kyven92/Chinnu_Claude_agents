@@ -51,7 +51,7 @@
       "install": "npx hail-hydra-cc --global",
       "update": "npx hail-hydra-cc --global",
       "uninstall_cmd": "echo y | npx hail-hydra-cc --uninstall",
-      "verify": "test -f ~/.claude/hooks/hydra-auto-guard.js",
+      "verify": "test -f ~/.claude/skills/hydra/SKILL.md",
       "opt_in": false,
       "tier": 2,
       "needs_runtime": ["node", "npx"]
